@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.143] - 2026-08-21
+### Fixed
+- One unfetchable file inside a multi-file torrent no longer freezes every download: TorrentRunner no longer loops forever on `UNIQUE constraint failed: Downloads.TorrentId, Downloads.Path`. A download path that collides with another download of the same torrent is now skipped instead of crashing the runner, a failed save can no longer poison the EF Core change tracker mid-tick, and the TaskRunner backs off exponentially when ticks fail repeatedly instead of hot-looping error logs (#1033).
+
 ## [2.0.142] - 2026-08-03
 ### Fixed
 - Reported foldername does not match actual foldername for TorBox
