@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Polly.Timeout;
 using RdtClient.Data.Enums;
 using RdtClient.Data.Models.Internal;
 using RdtClient.Service.Services;
@@ -62,6 +63,12 @@ public class ProviderUpdater(ILogger<ProviderUpdater> logger, IServiceProvider s
             {
                 await torrentRunner.SetRateLimit(ex.RetryAfter, ex.Message);
                 _nextUpdate = DateTime.UtcNow.Add(ex.RetryAfter);
+            }
+            catch (TimeoutRejectedException ex)
+            {
+                logger.LogWarning("The debrid provider did not respond within the configured timeout of {Timeout} seconds, skipping this update cycle: {Message}",
+                                  Settings.Get.Provider.Timeout,
+                                  ex.Message);
             }
             catch (Exception ex)
             {

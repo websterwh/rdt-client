@@ -11,8 +11,6 @@ permissions:
 env:
   APP_NAME: rdtclient
   DOCKER_FILE: ./Dockerfile
-  ENABLE_DOCKERHUB: 1
-  ENABLE_GHCR: 1
 
 concurrency: ${{ github.sha }}
 
@@ -21,6 +19,7 @@ jobs:
     outputs:
       digest-amd64: ${{ steps.digest.outputs.digest-amd64 }}
       digest-arm64: ${{ steps.digest.outputs.digest-arm64 }}
+      source-image: ${{ steps.images.outputs.source }}
     strategy:
       matrix:
         config:
@@ -31,6 +30,8 @@ jobs:
             runs-on: ubuntu-24.04-arm
             platform: linux/arm64
     runs-on: ${{ matrix.config.runs-on }}
+    env:
+      ENABLE_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -41,15 +42,36 @@ jobs:
           sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|" server/RdtClient.Web/RdtClient.Web.csproj
           sed -i "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>$VERSION</AssemblyVersion>|" server/RdtClient.Web/RdtClient.Web.csproj
 
+      - name: Resolve image names
+        id: images
+        env:
+          DOCKERHUB_USERNAME_SECRET: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          GHCR_IMAGE="ghcr.io/${OWNER}/${APP_NAME}"
+
+          SOURCE_IMAGE="${GHCR_IMAGE}"
+
+          {
+            echo 'list<<EOF'
+            echo "${GHCR_IMAGE}"
+            if [ -n "$DOCKERHUB_USERNAME_SECRET" ]; then
+              DH_IMAGE="${DOCKERHUB_USERNAME_SECRET}/${APP_NAME}"
+              echo "${DH_IMAGE}"
+              SOURCE_IMAGE="${DH_IMAGE}"
+            fi
+            echo 'EOF'
+            echo "source=${SOURCE_IMAGE}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Login to DockerHub
-        if: ${{ env.ENABLE_DOCKERHUB == 1 }}
+        if: ${{ env.ENABLE_DOCKERHUB == 'true' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-  
+
       - name: Login to GHCR
-        if: ${{ env.ENABLE_GHCR == 1 }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -63,9 +85,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}
-            ghcr.io/${{ github.repository_owner }}/${{ env.APP_NAME }}
+          images: ${{ steps.images.outputs.list }}
 
       - name: Build and push by digest
         id: build
@@ -73,7 +93,7 @@ jobs:
         with:
           context: .
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}
+          tags: ${{ steps.images.outputs.source }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
@@ -84,16 +104,17 @@ jobs:
   push-images:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      ENABLE_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - name: Login to DockerHub
-        if: ${{ env.ENABLE_DOCKERHUB == 1 }}
+        if: ${{ env.ENABLE_DOCKERHUB == 'true' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GHCR
-        if: ${{ env.ENABLE_GHCR == 1 }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -102,14 +123,29 @@ jobs:
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
+      - name: Resolve image names
+        id: images
+        env:
+          DOCKERHUB_USERNAME_SECRET: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          GHCR_IMAGE="ghcr.io/${OWNER}/${APP_NAME}"
+
+          {
+            echo 'list<<EOF'
+            echo "${GHCR_IMAGE}"
+            if [ -n "$DOCKERHUB_USERNAME_SECRET" ]; then
+              echo "${DOCKERHUB_USERNAME_SECRET}/${APP_NAME}"
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Docker Metadata action
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}
-            ghcr.io/${{ github.repository_owner }}/${{ env.APP_NAME }}
+          images: ${{ steps.images.outputs.list }}
           tags: |
             type=schedule
             type=ref,event=branch
@@ -118,19 +154,19 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha
-      
+
       - name: Create manifest list and push
-        run: |         
+        run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}') \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}@${{ needs.build.outputs.digest-amd64 }} \
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}@${{ needs.build.outputs.digest-arm64 }}
-      
+            ${{ needs.build.outputs.source-image }}@${{ needs.build.outputs.digest-amd64 }} \
+            ${{ needs.build.outputs.source-image }}@${{ needs.build.outputs.digest-arm64 }}
+
       - name: Checkout code
         uses: actions/checkout@v6
 
       - name: Docker Hub Registry Description
-        if: ${{ env.ENABLE_DOCKERHUB == 1 }}
+        if: ${{ env.ENABLE_DOCKERHUB == 'true' }}
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}

@@ -216,10 +216,14 @@ public class TorrentRunner(
 
                     if (download.RetryCount < download.Torrent.DownloadRetryAttempts)
                     {
-                        Log($"Retrying download", download, download.Torrent);
+                        var retryCount = download.RetryCount + 1;
+                        var retryDelay = GetDownloadLinkRetryDelay(retryCount);
+                        var retryAt = DateTimeOffset.UtcNow.Add(retryDelay);
 
-                        await downloads.Reset(downloadId);
-                        await downloads.UpdateRetryCount(downloadId, download.RetryCount + 1);
+                        Log($"Retrying download at {retryAt:u}", download, download.Torrent);
+
+                        await downloads.Reset(downloadId, retryAt);
+                        await downloads.UpdateRetryCount(downloadId, retryCount);
                     }
                     else
                     {

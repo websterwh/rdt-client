@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.144] - 2026-08-23
+### Fixed
+- Debrid provider API calls that exceed the configured timeout are now retried instead of failing the whole update cycle.
+- Provider timeouts are logged as concise warnings instead of full stack traces in TaskRunner and ProviderUpdater.
+- Failed downloads are requeued with a progressive backoff (15s to 120s) instead of immediately, avoiding hammering rate-limited providers (TorBox 429 errors).
+- The qBittorrent API `torrents/add` endpoint now responds after 30 seconds when a torrent is still queued on the debrid provider, so download clients such as Prowlarr no longer report add timeouts.
+
 ## [2.0.142] - 2026-08-03
 ### Fixed
 - Reported foldername does not match actual foldername for TorBox

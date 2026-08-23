@@ -105,6 +105,7 @@ public static class DiConfig
             ShouldHandle = args => args.Outcome switch
             {
                 { Exception: HttpRequestException } => PredicateResult.True(),
+                { Exception: TimeoutRejectedException } => PredicateResult.True(),
                 { Result.StatusCode: HttpStatusCode.RequestTimeout } => PredicateResult.True(),
                 { Result.StatusCode: HttpStatusCode.TooManyRequests } => PredicateResult.True(),
                 _ => PredicateResult.False()

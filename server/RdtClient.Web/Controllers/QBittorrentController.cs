@@ -678,8 +678,12 @@ public class QBittorrentController(ILogger<QBittorrentController> logger, QBitto
         };
     }
 
+    private const Int32 WaitForTorrentTimeoutSeconds = 30;
+
     private async Task<Boolean> WaitForTorrent(Guid torrentId)
     {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(WaitForTorrentTimeoutSeconds);
+
         while (true)
         {
             var torrent = await torrents.GetById(torrentId);
@@ -696,6 +700,15 @@ public class QBittorrentController(ILogger<QBittorrentController> logger, QBitto
 
             if (torrent.RdStatus != TorrentStatus.Queued)
             {
+                return true;
+            }
+
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                logger.LogInformation("Torrent {TorrentId} is still queued on the debrid provider after {WaitForTorrentTimeoutSeconds} seconds, responding as accepted so the download client does not time out",
+                                      torrentId,
+                                      WaitForTorrentTimeoutSeconds);
+
                 return true;
             }
 

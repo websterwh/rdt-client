@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Polly.Timeout;
 using RdtClient.Service.Services;
 
 namespace RdtClient.Service.BackgroundServices;
@@ -57,6 +58,12 @@ public class TaskRunner(ILogger<TaskRunner> logger, IServiceProvider serviceProv
                         // ignored
                     }
                 }
+            }
+            catch (TimeoutRejectedException ex)
+            {
+                logger.LogWarning("The debrid provider did not respond within the configured timeout of {Timeout} seconds, retrying on the next tick: {Message}",
+                                  Settings.Get.Provider.Timeout,
+                                  ex.Message);
             }
             catch (Exception ex)
             {
